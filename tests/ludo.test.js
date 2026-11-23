@@ -1,4 +1,5 @@
 const { Ludo, CASAS_SEGURAS, TAMANHO_TRILHA, CASA_INICIAL, PROGRESSO_CHEGADA } = require('../src/ludo');
+const { criarGerador, criarDado } = require('./helpers');
 
 // Dado controlado: devolve os valores informados, na ordem. Falha se rolarem mais do que o esperado.
 function dadosFixos(...valores) {
@@ -394,3 +395,49 @@ describe('Fim da partida', () => {
   });
 });
 
+describe('Partidas completas', () => {
+  const QUANTIDADE_DE_PARTIDAS = 40;
+  const LIMITE_DE_LANCES = 100000; // seguranca: evita laco infinito caso alguma partida nunca termine
+
+  // Joga uma partida inteira de forma automatica. O dado e a escolha da peca vem da mesma semente,
+  // entao o resultado e sempre o mesmo para uma mesma semente.
+  function jogarPartidaCompleta(semente) {
+    const jogo = new Ludo({ dado: criarDado(semente) });
+    const escolha = criarGerador(semente + 1);
+    const dados = [];
+    let lances = 0;
+
+    while (jogo.estado === 'jogando' && lances < LIMITE_DE_LANCES) {
+      dados.push(jogo.rolarDado());
+      lances++;
+      const validos = jogo.movimentosValidos();
+      if (validos.length > 0) {
+        jogo.mover(validos[Math.floor(escolha() * validos.length)]);
+      }
+      verificarIntegridade(jogo);
+    }
+    return { jogo, lances, dados };
+  }
+
+  test(`${QUANTIDADE_DE_PARTIDAS} partidas automaticas terminam dentro do limite de lances e o vencedor tem as 4 pecas na chegada`, () => {
+    for (let semente = 1; semente <= QUANTIDADE_DE_PARTIDAS; semente++) {
+      const { jogo, lances } = jogarPartidaCompleta(semente);
+
+      expect(lances).toBeLessThan(LIMITE_DE_LANCES);
+      expect(jogo.estado).toBe('fim');
+      expect([1, 2]).toContain(jogo.vencedor);
+      expect(jogo.pecas(jogo.vencedor)).toEqual(Array(4).fill(PROGRESSO_CHEGADA));
+      for (let i = 0; i < 4; i++) expect(jogo.estadoDaPeca(jogo.vencedor, i)).toBe('chegada');
+    }
+  });
+
+  test('a mesma semente produz exatamente a mesma partida', () => {
+    const a = jogarPartidaCompleta(2024);
+    const b = jogarPartidaCompleta(2024);
+    expect(b.dados).toEqual(a.dados);
+    expect(b.lances).toBe(a.lances);
+    expect(b.jogo.vencedor).toBe(a.jogo.vencedor);
+    expect(b.jogo.pecas(1)).toEqual(a.jogo.pecas(1));
+    expect(b.jogo.pecas(2)).toEqual(a.jogo.pecas(2));
+  });
+});
